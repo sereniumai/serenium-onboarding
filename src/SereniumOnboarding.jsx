@@ -363,33 +363,53 @@ export default function SereniumOnboarding() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // ── Call server-side Claude API (with 25s timeout) ──
+  // ── Call server-side Claude API (with retry on failure) ──
   const callClaude = async (msgs, maxTokens = 1024) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system: SYSTEM_PROMPT,
-          messages: msgs,
-          max_tokens: maxTokens,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      if (!data.content || !data.content[0] || !data.content[0].text) {
-        console.error("Unexpected Claude response:", JSON.stringify(data));
-        throw new Error("Invalid response from Claude");
+    const delays = [0, 3000, 6000]; // instant, 3s, 6s
+    let lastErr;
+
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (attempt > 0) {
+        console.warn(`Retrying callClaude (attempt ${attempt + 1})...`);
+        await new Promise((r) => setTimeout(r, delays[attempt]));
       }
-      return data.content[0].text;
-    } catch (err) {
-      clearTimeout(timeout);
-      throw err;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system: SYSTEM_PROMPT,
+            messages: msgs,
+            max_tokens: maxTokens,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (res.status === 429) {
+          lastErr = new Error("API error: 429");
+          continue; // retry on rate limit
+        }
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+
+        const data = await res.json();
+        if (!data.content || !data.content[0] || !data.content[0].text) {
+          console.error("Unexpected Claude response:", JSON.stringify(data));
+          throw new Error("Invalid response from Claude");
+        }
+        return data.content[0].text;
+      } catch (err) {
+        clearTimeout(timeout);
+        lastErr = err;
+        if (err.name === "AbortError") continue; // retry on timeout
+        if (err.message?.includes("429")) continue; // retry on rate limit
+        throw err; // don't retry other errors
+      }
     }
+    throw lastErr;
   };
 
   // ── Fire partial data to n8n (name + email only) ──
