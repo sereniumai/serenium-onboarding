@@ -627,9 +627,10 @@ export default function SereniumOnboarding() {
       ) {
         conversationRef.current.pop();
       }
+      const errDetail = err.name === "AbortError" ? " (timeout)" : err.message ? ` (${err.message})` : "";
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", display: "Sorry — something went wrong. Please try again." },
+        { role: "assistant", display: `Sorry — something went wrong${errDetail}. Please try again.` },
       ]);
       setScanning(false);
       clearInterval(scanTimerRef.current);
