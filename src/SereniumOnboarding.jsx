@@ -339,12 +339,7 @@ export default function SereniumOnboarding() {
   const [phase, setPhase] = useState(0);
   const [complete, setComplete] = useState(false);
   const [collectedData, setCollectedData] = useState(null);
-  const [copied, setCopied] = useState(false);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [started, setStarted] = useState(false);
-  const [generatedPrompt, setGeneratedPrompt] = useState(null);
-  const [generatingPrompt, setGeneratingPrompt] = useState(false);
-  const [activeTab, setActiveTab] = useState("prompt");
   const [scanning, setScanning] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -471,7 +466,7 @@ export default function SereniumOnboarding() {
       if (jsonData) {
         setCollectedData(jsonData);
         setComplete(true);
-        generatePrompt(jsonData);
+        generateAndSubmit(jsonData);
         const completionMsg = stripMarkers(raw.split("[COMPLETE]")[0]);
         conversationRef.current.push({ role: "assistant", content: raw });
         setMessages((prev) => [
@@ -529,20 +524,9 @@ export default function SereniumOnboarding() {
     }
   };
 
-  const copyJSON = () => {
-    navigator.clipboard.writeText(JSON.stringify(collectedData, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  };
-
-  const copyPrompt = () => {
-    navigator.clipboard.writeText(generatedPrompt);
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2500);
-  };
-
-  const generatePrompt = async (jsonData) => {
-    setGeneratingPrompt(true);
+  // Generate prompt server-side and fire everything to n8n + Google Sheet
+  // Client never sees the prompt — it's internal for the Serenium team
+  const generateAndSubmit = async (jsonData) => {
     try {
       const res = await fetch("/api/generate-prompt", {
         method: "POST",
@@ -553,12 +537,14 @@ export default function SereniumOnboarding() {
           onboardingData: jsonData,
         }),
       });
-      if (!res.ok) throw new Error("Prompt generation failed");
-      const data = await res.json();
-      const prompt = data.content[0].text;
-      setGeneratedPrompt(prompt);
 
-      // Fire full data + prompt to n8n
+      let prompt = "";
+      if (res.ok) {
+        const data = await res.json();
+        prompt = data.content[0].text;
+      }
+
+      // Fire full data + generated prompt to n8n → Google Sheet + email
       await fetch("/api/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -574,12 +560,9 @@ export default function SereniumOnboarding() {
           generated_prompt: prompt,
         }),
       });
-    } catch {
-      setGeneratedPrompt(
-        "Error generating prompt — please try again or contact the Serenium team."
-      );
+    } catch (err) {
+      console.error("Submit failed:", err);
     }
-    setGeneratingPrompt(false);
   };
 
   const progressPct = complete ? 100 : Math.round((phase / 5) * 100);
@@ -929,261 +912,152 @@ export default function SereniumOnboarding() {
                 background: "#0D1117",
                 border: "1px solid #166534",
                 borderRadius: 16,
-                padding: 24,
+                padding: "32px 28px",
                 marginTop: 8,
+                textAlign: "center",
                 animation: "fadeSlideIn 0.4s ease forwards",
               }}
             >
-              {/* Header */}
+              {/* Success icon */}
               <div
                 style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #14532D, #166534)",
+                  border: "2px solid #22C55E",
+                  margin: "0 auto 20px",
                   display: "flex",
-                  justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: 16,
+                  justifyContent: "center",
+                  fontSize: 24,
                 }}
               >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#22C55E",
-                      letterSpacing: "2.5px",
-                      textTransform: "uppercase",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Setup Complete
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "#F9FAFB" }}>
-                    {collectedData.business?.name || "Your Business"}
-                  </div>
-                </div>
-                {activeTab === "json" ? (
-                  <button
-                    onClick={copyJSON}
-                    style={{
-                      background: copied ? "#14532D" : "#111827",
-                      border: `1px solid ${copied ? "#22C55E" : "#1E2733"}`,
-                      borderRadius: 8,
-                      padding: "8px 16px",
-                      color: copied ? "#22C55E" : "#9CA3AF",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      letterSpacing: "1px",
-                      textTransform: "uppercase",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    {copied ? "Copied ✓" : "Copy JSON"}
-                  </button>
-                ) : (
-                  <button
-                    onClick={copyPrompt}
-                    disabled={generatingPrompt || !generatedPrompt}
-                    style={{
-                      background: copiedPrompt
-                        ? "#14532D"
-                        : generatingPrompt
-                          ? "#0A1628"
-                          : "#111827",
-                      border: `1px solid ${copiedPrompt ? "#22C55E" : generatingPrompt ? "#1E3A5F" : "#1E2733"}`,
-                      borderRadius: 8,
-                      padding: "8px 16px",
-                      color: copiedPrompt
-                        ? "#22C55E"
-                        : generatingPrompt
-                          ? "#3B82F6"
-                          : "#9CA3AF",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor:
-                        generatingPrompt || !generatedPrompt ? "default" : "pointer",
-                      letterSpacing: "1px",
-                      textTransform: "uppercase",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    {copiedPrompt
-                      ? "Copied ✓"
-                      : generatingPrompt
-                        ? "Generating…"
-                        : "Copy Prompt"}
-                  </button>
-                )}
+                <span style={{ color: "#22C55E" }}>&#10003;</span>
               </div>
 
-              {/* Summary pills */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                {[
-                  { label: "Contact", val: collectedData.contact_name },
-                  { label: "Email", val: collectedData.contact_email },
-                  { label: "Industry", val: collectedData.business?.industry },
-                  {
-                    label: "Areas",
-                    val: collectedData.business?.service_areas?.join(", "),
-                  },
-                  {
-                    label: "Phone",
-                    val:
-                      collectedData.phone_setup?.type === "new"
-                        ? "New number"
-                        : "Divert existing",
-                  },
-                  {
-                    label: "Emails",
-                    val: collectedData.after_call?.notification_emails?.join(", "),
-                  },
-                ]
-                  .filter((s) => s.val)
-                  .map((s, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: "#111827",
-                        border: "1px solid #1E2733",
-                        borderRadius: 8,
-                        padding: "5px 12px",
-                        fontSize: 12,
-                      }}
-                    >
-                      <span style={{ color: "#6B7280", fontWeight: 600 }}>{s.label}: </span>
-                      <span style={{ color: "#D1D5DB", fontWeight: 500 }}>{s.val}</span>
-                    </div>
-                  ))}
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#22C55E",
+                  letterSpacing: "2.5px",
+                  textTransform: "uppercase",
+                  marginBottom: 8,
+                }}
+              >
+                Setup Complete
               </div>
 
-              {/* Tabs */}
-              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                {[
-                  { id: "prompt", label: "Generated Prompt" },
-                  { id: "json", label: "Raw JSON" },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    style={{
-                      background: activeTab === tab.id ? "#1D4ED8" : "#111827",
-                      border: `1px solid ${activeTab === tab.id ? "#3B82F6" : "#1E2733"}`,
-                      borderRadius: 8,
-                      padding: "6px 14px",
-                      color: activeTab === tab.id ? "#fff" : "#6B7280",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      letterSpacing: "0.5px",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: "#F9FAFB",
+                  marginBottom: 8,
+                }}
+              >
+                {collectedData.business?.name || "Your Business"}
               </div>
 
-              {/* Tab content */}
+              <div
+                style={{
+                  fontSize: 15,
+                  color: "#9CA3AF",
+                  lineHeight: 1.7,
+                  marginBottom: 24,
+                  maxWidth: 440,
+                  margin: "0 auto 24px",
+                }}
+              >
+                We've got everything we need. The Serenium team is now building your
+                custom AI receptionist — you'll receive an email
+                at <strong style={{ color: "#E5E7EB" }}>{collectedData.contact_email || "your email"}</strong> when
+                it's live.
+              </div>
+
+              {/* What happens next */}
               <div
                 style={{
                   background: "#070B10",
                   border: "1px solid #111827",
-                  borderRadius: 8,
-                  padding: 14,
-                  maxHeight: 340,
-                  overflow: "auto",
+                  borderRadius: 12,
+                  padding: "20px 24px",
+                  textAlign: "left",
+                  marginBottom: 16,
                 }}
               >
-                {activeTab === "json" ? (
-                  <pre
-                    style={{
-                      fontSize: 11,
-                      color: "#4B5563",
-                      margin: 0,
-                      lineHeight: 1.7,
-                      fontFamily: "'Courier New', monospace",
-                    }}
-                  >
-                    {JSON.stringify(collectedData, null, 2)}
-                  </pre>
-                ) : generatingPrompt ? (
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#6B7280",
+                    letterSpacing: "2px",
+                    textTransform: "uppercase",
+                    marginBottom: 16,
+                  }}
+                >
+                  What happens next
+                </div>
+                {[
+                  { step: "1", text: "Our team reviews your setup details" },
+                  { step: "2", text: "We build and test your custom AI receptionist" },
+                  { step: "3", text: "You get an email with your number and go-live instructions" },
+                ].map((item) => (
                   <div
+                    key={item.step}
                     style={{
                       display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "40px 20px",
+                      alignItems: "flex-start",
                       gap: 14,
+                      marginBottom: 14,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {[0, 1, 2].map((j) => (
-                        <div
-                          key={j}
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: "#3B82F6",
-                            animation: `typingDot 1.3s ease-in-out ${j * 0.22}s infinite`,
-                          }}
-                        />
-                      ))}
+                    <div
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        background: "#1D4ED8",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#fff",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.step}
                     </div>
                     <div
                       style={{
-                        fontSize: 12,
-                        color: "#3B82F6",
-                        fontWeight: 600,
-                        letterSpacing: "1px",
+                        fontSize: 14,
+                        color: "#D1D5DB",
+                        lineHeight: 1.5,
+                        paddingTop: 2,
                       }}
                     >
-                      BUILDING YOUR PROMPT…
+                      {item.text}
                     </div>
                   </div>
-                ) : generatedPrompt ? (
-                  <pre
-                    style={{
-                      fontSize: 12,
-                      color: "#9CA3AF",
-                      margin: 0,
-                      lineHeight: 1.8,
-                      fontFamily: "'Courier New', monospace",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {generatedPrompt}
-                  </pre>
-                ) : (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "#4B5563",
-                      padding: "20px",
-                      textAlign: "center",
-                    }}
-                  >
-                    Prompt generation failed. Use Copy JSON and contact the Serenium team.
-                  </div>
-                )}
+                ))}
               </div>
 
-              {/* Footer note */}
+              {/* Footer */}
               <div
                 style={{
-                  marginTop: 14,
-                  padding: "10px 14px",
+                  padding: "12px 16px",
                   background: "#0A1628",
                   border: "1px solid #1E3A5F",
-                  borderRadius: 8,
+                  borderRadius: 10,
                   fontSize: 13,
                   color: "#60A5FA",
-                  lineHeight: 1.5,
+                  lineHeight: 1.6,
                 }}
               >
-                The Serenium team will have your AI receptionist live within 24 hours. Check
-                your inbox for next steps.
+                Typical turnaround is under 24 hours. Questions? Reach us
+                at <strong>contact@sereniumai.com</strong>
               </div>
             </div>
           )}
