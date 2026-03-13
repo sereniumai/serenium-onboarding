@@ -353,7 +353,15 @@ export default function SereniumOnboarding() {
   const inputRef = useRef(null);
   const conversationRef = useRef([]);
   const partialFiredRef = useRef(false);
+  const lastSavedPhaseRef = useRef(-1);
+  const contactInfoRef = useRef({ name: "", email: "" });
   const scanTimerRef = useRef(null);
+
+  // Wrap setPhase to also trigger progressive save
+  const updatePhase = (newPhase) => {
+    setPhase(newPhase);
+    saveProgress(newPhase);
+  };
 
   useEffect(() => {
     initConversation();
@@ -414,6 +422,12 @@ export default function SereniumOnboarding() {
 
   // ── Fire partial data to n8n (name + email only) ──
   const firePartialToWebhook = async (partialData) => {
+    // Store contact info for progressive saves
+    contactInfoRef.current = {
+      name: partialData.contact_name || "",
+      email: partialData.contact_email || "",
+    };
+
     if (partialFiredRef.current) return;
     partialFiredRef.current = true;
     try {
@@ -428,6 +442,35 @@ export default function SereniumOnboarding() {
       });
     } catch (err) {
       console.error("Failed to fire partial webhook:", err);
+    }
+  };
+
+  // ── Save progress on phase changes (so partial data isn't lost) ──
+  const saveProgress = async (newPhase) => {
+    // Only save when phase actually advances
+    if (newPhase <= lastSavedPhaseRef.current) return;
+    lastSavedPhaseRef.current = newPhase;
+
+    const phaseLabels = ["Business", "Phone", "Handling", "Call Types", "Reporting", "Complete"];
+    try {
+      await fetch("/api/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partial: true,
+          progress: true,
+          contact_name: contactInfoRef.current.name,
+          contact_email: contactInfoRef.current.email,
+          phase: newPhase,
+          phase_label: phaseLabels[newPhase] || `Phase ${newPhase}`,
+          conversation: conversationRef.current
+            .filter((m) => m.content !== "__init__")
+            .map((m) => ({ role: m.role, content: stripMarkers(m.content) })),
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to save progress:", err);
     }
   };
 
@@ -536,7 +579,7 @@ export default function SereniumOnboarding() {
         if (raw) {
           // Claude provided a response — use it
           const detectedPhase = extractPhase(raw);
-          if (detectedPhase !== null) setPhase(detectedPhase);
+          if (detectedPhase !== null) updatePhase(detectedPhase);
           const display = stripMarkers(raw);
           conversationRef.current.push({ role: "assistant", content: raw });
           setMessages((prev) => [...prev, { role: "assistant", display }]);
@@ -600,7 +643,7 @@ export default function SereniumOnboarding() {
               conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
             );
             const followUpPhase = extractPhase(followUp);
-            if (followUpPhase !== null) setPhase(followUpPhase);
+            if (followUpPhase !== null) updatePhase(followUpPhase);
             const followUpDisplay = stripMarkers(followUp);
             conversationRef.current.push({ role: "assistant", content: followUp });
             setMessages((prev) => [...prev, { role: "assistant", display: followUpDisplay }]);
@@ -620,7 +663,7 @@ export default function SereniumOnboarding() {
               conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
             );
             const followUpPhase = extractPhase(followUp);
-            if (followUpPhase !== null) setPhase(followUpPhase);
+            if (followUpPhase !== null) updatePhase(followUpPhase);
             const followUpDisplay = stripMarkers(followUp);
             conversationRef.current.push({ role: "assistant", content: followUp });
             setMessages((prev) => [...prev, { role: "assistant", display: followUpDisplay }]);
@@ -632,7 +675,7 @@ export default function SereniumOnboarding() {
         }
       } else {
         const detectedPhase = extractPhase(raw);
-        if (detectedPhase !== null) setPhase(detectedPhase);
+        if (detectedPhase !== null) updatePhase(detectedPhase);
         const display = stripMarkers(raw);
         conversationRef.current.push({ role: "assistant", content: raw });
         setMessages((prev) => [...prev, { role: "assistant", display }]);
