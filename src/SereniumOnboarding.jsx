@@ -607,15 +607,86 @@ export default function SereniumOnboarding() {
 
   const progressPct = complete ? 100 : Math.round((phase / 5) * 100);
 
+  // ── Theme system ──
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("serenium-theme");
+      if (stored) return stored === "dark";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("serenium-theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
+
+  const t = darkMode
+    ? {
+        bg: "#06080C",
+        bgSurface: "#0C1017",
+        bgElevated: "#111620",
+        bgInput: "#0C1017",
+        border: "rgba(255,255,255,0.06)",
+        borderFocus: "#3B82F6",
+        text: "#F1F5F9",
+        textSecondary: "#94A3B8",
+        textMuted: "#475569",
+        accent: "#3B82F6",
+        accentGlow: "rgba(59,130,246,0.15)",
+        accentGradient: "linear-gradient(135deg, #2563EB, #3B82F6)",
+        userBubble: "linear-gradient(135deg, #1D4ED8, #3B82F6)",
+        userBubbleBorder: "rgba(59,130,246,0.3)",
+        aiBubble: "rgba(255,255,255,0.03)",
+        aiBubbleBorder: "rgba(255,255,255,0.06)",
+        headerBg: "rgba(6,8,12,0.92)",
+        inputBarBg: "rgba(6,8,12,0.95)",
+        success: "#22C55E",
+        successBg: "rgba(34,197,94,0.08)",
+        successBorder: "rgba(34,197,94,0.2)",
+        scrollThumb: "rgba(255,255,255,0.08)",
+        placeholder: "#334155",
+        shadow: "0 -1px 24px rgba(0,0,0,0.5)",
+      }
+    : {
+        bg: "#F8FAFC",
+        bgSurface: "#FFFFFF",
+        bgElevated: "#F1F5F9",
+        bgInput: "#FFFFFF",
+        border: "rgba(0,0,0,0.08)",
+        borderFocus: "#2563EB",
+        text: "#0F172A",
+        textSecondary: "#475569",
+        textMuted: "#94A3B8",
+        accent: "#2563EB",
+        accentGlow: "rgba(37,99,235,0.08)",
+        accentGradient: "linear-gradient(135deg, #1D4ED8, #3B82F6)",
+        userBubble: "linear-gradient(135deg, #2563EB, #3B82F6)",
+        userBubbleBorder: "rgba(37,99,235,0.2)",
+        aiBubble: "#FFFFFF",
+        aiBubbleBorder: "rgba(0,0,0,0.08)",
+        headerBg: "rgba(248,250,252,0.92)",
+        inputBarBg: "rgba(248,250,252,0.95)",
+        success: "#16A34A",
+        successBg: "rgba(22,163,74,0.06)",
+        successBorder: "rgba(22,163,74,0.15)",
+        scrollThumb: "rgba(0,0,0,0.1)",
+        placeholder: "#94A3B8",
+        shadow: "0 -1px 24px rgba(0,0,0,0.06)",
+      };
+
+  const canSend = input.trim() && !loading && !scanning;
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#070B10",
+        background: t.bg,
         display: "flex",
         flexDirection: "column",
-        fontFamily: "'Barlow', Helvetica, Arial, sans-serif",
-        color: "#E5E7EB",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        color: t.text,
+        transition: "background 0.3s ease, color 0.3s ease",
       }}
     >
       {/* ── HEADER ── */}
@@ -624,113 +695,186 @@ export default function SereniumOnboarding() {
           position: "sticky",
           top: 0,
           zIndex: 20,
-          background: "rgba(7,11,16,0.95)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid #111827",
+          background: t.headerBg,
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderBottom: `1px solid ${t.border}`,
           padding: "0 20px",
+          transition: "background 0.3s ease, border-color 0.3s ease",
         }}
       >
-        <div style={{ maxWidth: 700, margin: "0 auto" }}>
+        <div style={{ maxWidth: 680, margin: "0 auto" }}>
           {/* Top row */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              padding: "14px 0 10px",
+              padding: "16px 0 12px",
             }}
           >
-            <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Logo mark */}
               <div
                 style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "3.5px",
-                  textTransform: "uppercase",
-                  color: "#2563EB",
-                  marginBottom: 2,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: t.accentGradient,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: `0 2px 8px ${t.accentGlow}`,
                 }}
               >
-                SERENIUM AI
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="rgba(255,255,255,0.9)" />
+                  <path d="M2 17L12 22L22 17" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M2 12L12 17L22 12" stroke="rgba(255,255,255,0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#9CA3AF" }}>
-                Receptionist Setup
+              <div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: t.text,
+                    letterSpacing: "-0.3px",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Serenium AI
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 500, color: t.textMuted, marginTop: 1 }}>
+                  Receptionist Setup
+                </div>
               </div>
             </div>
-            <div
-              style={{
-                background: complete ? "#052E16" : "#0F172A",
-                border: `1px solid ${complete ? "#22C55E" : "#1E2733"}`,
-                borderRadius: 20,
-                padding: "5px 12px",
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "1.5px",
-                color: complete ? "#22C55E" : "#6B7280",
-                textTransform: "uppercase",
-              }}
-            >
-              {complete ? "✓ Complete" : `${progressPct}%`}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Theme toggle */}
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                aria-label="Toggle theme"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: t.bgElevated,
+                  border: `1px solid ${t.border}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                  color: t.textSecondary,
+                  fontSize: 16,
+                  padding: 0,
+                }}
+              >
+                {darkMode ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Progress pill */}
+              <div
+                style={{
+                  background: complete ? t.successBg : t.accentGlow,
+                  border: `1px solid ${complete ? t.successBorder : "rgba(59,130,246,0.15)"}`,
+                  borderRadius: 20,
+                  padding: "5px 14px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: complete ? t.success : t.accent,
+                  letterSpacing: "-0.2px",
+                  transition: "all 0.3s ease",
+                }}
+              >
+                {complete ? "Complete" : `${progressPct}%`}
+              </div>
             </div>
           </div>
 
-          {/* Progress bar + phase labels */}
-          <div style={{ paddingBottom: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+          {/* Progress stepper */}
+          <div style={{ paddingBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 10 }}>
               {PHASES.map((p, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 3,
-                    flex: 1,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: "50%",
-                      background: complete
-                        ? "#14532D"
-                        : i < phase
-                          ? "#1D4ED8"
-                          : i === phase
-                            ? "linear-gradient(135deg,#1D4ED8,#3B82F6)"
-                            : "#0D1117",
-                      border: `2px solid ${complete ? "#22C55E" : i <= phase ? "#3B82F6" : "#1E2733"}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 13,
-                      transition: "all 0.4s ease",
-                      boxShadow:
-                        i === phase && !complete ? "0 0 10px rgba(59,130,246,0.4)" : "none",
-                    }}
-                  >
-                    {complete || i < phase ? (
-                      <span style={{ fontSize: 11, color: complete ? "#22C55E" : "#fff" }}>
-                        ✓
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 11 }}>{p.icon}</span>
-                    )}
+                <div key={i} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: "0 0 auto" }}>
+                    <div
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: "50%",
+                        background: complete
+                          ? t.success
+                          : i < phase
+                            ? t.accent
+                            : i === phase
+                              ? t.accentGradient
+                              : t.bgElevated,
+                        border: `2px solid ${
+                          complete ? t.success : i <= phase ? t.accent : t.border
+                        }`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all 0.4s ease",
+                        boxShadow:
+                          i === phase && !complete
+                            ? `0 0 0 4px ${t.accentGlow}`
+                            : "none",
+                      }}
+                    >
+                      {complete || i < phase ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={complete ? "#fff" : "#fff"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <span style={{ fontSize: 10, fontWeight: 600, color: i === phase ? "#fff" : t.textMuted }}>
+                          {i + 1}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: complete ? t.success : i <= phase ? t.accent : t.textMuted,
+                        marginTop: 4,
+                        whiteSpace: "nowrap",
+                        transition: "color 0.3s ease",
+                        letterSpacing: "-0.2px",
+                      }}
+                    >
+                      {p.label}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 700,
-                      letterSpacing: "1px",
-                      textTransform: "uppercase",
-                      color: complete ? "#22C55E" : i <= phase ? "#3B82F6" : "#374151",
-                      transition: "color 0.3s",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {p.label}
-                  </div>
+                  {/* Connector line */}
+                  {i < PHASES.length - 1 && (
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 2,
+                        marginBottom: 18,
+                        marginLeft: 4,
+                        marginRight: 4,
+                        borderRadius: 1,
+                        background:
+                          complete || i < phase
+                            ? complete ? t.success : t.accent
+                            : t.border,
+                        transition: "background 0.4s ease",
+                      }}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -738,89 +882,66 @@ export default function SereniumOnboarding() {
             {/* Bar track */}
             <div
               style={{
-                height: 6,
-                background: "#111827",
-                borderRadius: 6,
+                height: 3,
+                background: t.bgElevated,
+                borderRadius: 3,
                 overflow: "hidden",
-                position: "relative",
               }}
             >
               <div
                 style={{
                   height: "100%",
                   width: `${progressPct}%`,
-                  background: complete
-                    ? "linear-gradient(90deg, #16A34A, #22C55E)"
-                    : "linear-gradient(90deg, #1D4ED8, #60A5FA)",
-                  borderRadius: 6,
+                  background: complete ? t.success : t.accentGradient,
+                  borderRadius: 3,
                   transition: "width 0.7s cubic-bezier(0.4,0,0.2,1)",
-                  boxShadow: complete
-                    ? "0 0 8px rgba(34,197,94,0.4)"
-                    : "0 0 8px rgba(59,130,246,0.3)",
                 }}
               />
-            </div>
-
-            <div
-              style={{
-                textAlign: "right",
-                marginTop: 5,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "1px",
-                color: complete ? "#22C55E" : "#3B82F6",
-              }}
-            >
-              {complete ? "COMPLETE" : `${progressPct}% COMPLETE`}
             </div>
           </div>
         </div>
       </header>
 
       {/* ── MESSAGES ── */}
-      <main
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "24px 16px 120px",
-        }}
-      >
-        <div style={{ maxWidth: 700, margin: "0 auto" }}>
+      <main style={{ flex: 1, overflowY: "auto", padding: "28px 16px 140px" }}>
+        <div style={{ maxWidth: 680, margin: "0 auto" }}>
           {/* Intro card */}
           {messages.length === 0 && (
             <div
               style={{
-                background: "#0D1117",
-                border: "1px solid #1E2733",
-                borderRadius: 16,
-                padding: "28px 28px",
-                marginBottom: 24,
+                background: t.bgSurface,
+                border: `1px solid ${t.border}`,
+                borderRadius: 20,
+                padding: "40px 32px",
+                marginBottom: 28,
                 textAlign: "center",
+                transition: "all 0.3s ease",
               }}
             >
               <div
                 style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #1D4ED8, #3B82F6)",
-                  margin: "0 auto 16px",
+                  width: 56,
+                  height: 56,
+                  borderRadius: 16,
+                  background: t.accentGradient,
+                  margin: "0 auto 20px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 22,
+                  boxShadow: `0 4px 16px ${t.accentGlow}`,
                 }}
               >
-                S
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="rgba(255,255,255,0.9)" />
+                  <path d="M2 17L12 22L22 17" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M2 12L12 17L22 12" stroke="rgba(255,255,255,0.8)" strokeWidth="2" strokeLinecap="round" />
+                </svg>
               </div>
-              <div
-                style={{ fontSize: 18, fontWeight: 700, color: "#F9FAFB", marginBottom: 8 }}
-              >
+              <div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 8, letterSpacing: "-0.5px" }}>
                 Welcome to Serenium AI
               </div>
-              <div style={{ fontSize: 14, color: "#6B7280", lineHeight: 1.6 }}>
-                Answer a few questions and we'll have your AI receptionist built and live
-                within 24 hours.
+              <div style={{ fontSize: 15, color: t.textSecondary, lineHeight: 1.7, maxWidth: 380, margin: "0 auto" }}>
+                Answer a few questions and we'll have your AI receptionist built and live within 24 hours.
               </div>
             </div>
           )}
@@ -832,55 +953,55 @@ export default function SereniumOnboarding() {
               style={{
                 display: "flex",
                 justifyContent: m.role === "user" ? "flex-end" : "flex-start",
-                marginBottom: 16,
-                animation: "fadeSlideIn 0.25s ease forwards",
+                marginBottom: 20,
+                animation: "fadeSlideIn 0.3s ease forwards",
+                opacity: 0,
               }}
             >
               {m.role === "assistant" && (
                 <div
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: "50%",
-                    background: "linear-gradient(135deg, #1D4ED8, #3B82F6)",
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    background: t.accentGradient,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: "#fff",
-                    marginRight: 10,
+                    marginRight: 12,
                     flexShrink: 0,
                     marginTop: 2,
-                    letterSpacing: 0,
+                    boxShadow: `0 2px 8px ${t.accentGlow}`,
                   }}
                 >
-                  S
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="rgba(255,255,255,0.9)" />
+                    <path d="M2 12L12 17L22 12" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
                 </div>
               )}
               <div
                 style={{
-                  maxWidth: "80%",
-                  background:
-                    m.role === "user"
-                      ? "linear-gradient(135deg, #1D4ED8, #2563EB)"
-                      : "#0D1117",
-                  border: m.role === "user" ? "none" : "1px solid #1E2733",
-                  color: "#E5E7EB",
-                  padding: "13px 18px",
-                  borderRadius:
-                    m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                  maxWidth: "78%",
+                  background: m.role === "user" ? t.userBubble : t.aiBubble,
+                  border: m.role === "user" ? `1px solid ${t.userBubbleBorder}` : `1px solid ${t.aiBubbleBorder}`,
+                  color: m.role === "user" ? "#FFFFFF" : t.text,
+                  padding: "14px 20px",
+                  borderRadius: m.role === "user" ? "20px 20px 4px 20px" : "20px 20px 20px 4px",
                   fontSize: 15,
-                  lineHeight: 1.6,
+                  lineHeight: 1.65,
                   fontWeight: 400,
                   whiteSpace: "pre-wrap",
+                  letterSpacing: "-0.1px",
+                  boxShadow: m.role === "user"
+                    ? `0 2px 12px rgba(37,99,235,0.15)`
+                    : darkMode ? "none" : "0 1px 4px rgba(0,0,0,0.04)",
+                  transition: "background 0.3s ease, border-color 0.3s ease",
                 }}
               >
                 {m.display}
               </div>
-              {m.role === "user" && (
-                <div style={{ width: 32, marginLeft: 10, flexShrink: 0 }} />
-              )}
+              {m.role === "user" && <div style={{ width: 34, marginLeft: 12, flexShrink: 0 }} />}
             </div>
           ))}
 
@@ -890,81 +1011,83 @@ export default function SereniumOnboarding() {
               style={{
                 display: "flex",
                 justifyContent: "flex-start",
-                marginBottom: 16,
+                marginBottom: 20,
                 animation: "fadeSlideIn 0.2s ease forwards",
+                opacity: 0,
               }}
             >
               <div
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #1D4ED8, #3B82F6)",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: t.accentGradient,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: "#fff",
-                  marginRight: 10,
+                  marginRight: 12,
                   flexShrink: 0,
+                  boxShadow: `0 2px 8px ${t.accentGlow}`,
                 }}
               >
-                S
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="rgba(255,255,255,0.9)" />
+                  <path d="M2 12L12 17L22 12" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" />
+                </svg>
               </div>
               <div
                 style={{
-                  background: "#0D1117",
-                  border: "1px solid #1E2733",
-                  padding: "14px 18px",
-                  borderRadius: "18px 18px 18px 4px",
+                  background: t.aiBubble,
+                  border: `1px solid ${t.aiBubbleBorder}`,
+                  padding: scanning ? "16px 22px" : "16px 20px",
+                  borderRadius: "20px 20px 20px 4px",
                   display: "flex",
-                  gap: 5,
+                  gap: 6,
                   alignItems: "center",
+                  transition: "all 0.3s ease",
                 }}
               >
                 {scanning ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: "50%",
-                        border: "3px solid #1E2733",
-                        borderTopColor: "#3B82F6",
-                        animation: "spin 1s linear infinite",
-                        flexShrink: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        position: "relative",
-                      }}
-                    >
-                      {scanCountdown > 0 && (
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#3B82F6",
-                            position: "absolute",
-                          }}
-                        >
-                          {scanCountdown}
-                        </span>
-                      )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    {/* Scan progress ring */}
+                    <div style={{ position: "relative", width: 42, height: 42, flexShrink: 0 }}>
+                      <svg width="42" height="42" style={{ transform: "rotate(-90deg)" }}>
+                        <circle cx="21" cy="21" r="18" fill="none" stroke={t.border} strokeWidth="3" />
+                        <circle
+                          cx="21" cy="21" r="18" fill="none"
+                          stroke={t.accent}
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeDasharray={`${((30 - scanCountdown) / 30) * 113} 113`}
+                          style={{ transition: "stroke-dasharray 1s linear" }}
+                        />
+                      </svg>
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: t.accent,
+                        }}
+                      >
+                        {scanCountdown > 0 ? scanCountdown : ""}
+                      </span>
                     </div>
                     <div>
-                      <div style={{ fontSize: 14, color: "#E5E7EB", fontWeight: 600 }}>
+                      <div style={{ fontSize: 14, color: t.text, fontWeight: 600, letterSpacing: "-0.2px" }}>
                         Scanning your website
                       </div>
-                      <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: t.textMuted, marginTop: 3 }}>
                         {scanCountdown > 20
-                          ? "Fetching pages…"
+                          ? "Fetching pages..."
                           : scanCountdown > 10
-                            ? "Extracting business details…"
+                            ? "Extracting business details..."
                             : scanCountdown > 0
-                              ? "Almost done…"
-                              : "Wrapping up…"}
+                              ? "Almost done..."
+                              : "Wrapping up..."}
                       </div>
                     </div>
                   </div>
@@ -973,10 +1096,10 @@ export default function SereniumOnboarding() {
                     <div
                       key={j}
                       style={{
-                        width: 7,
-                        height: 7,
+                        width: 8,
+                        height: 8,
                         borderRadius: "50%",
-                        background: "#3B82F6",
+                        background: t.accent,
                         animation: `typingDot 1.3s ease-in-out ${j * 0.22}s infinite`,
                       }}
                     />
@@ -990,41 +1113,47 @@ export default function SereniumOnboarding() {
           {complete && collectedData && (
             <div
               style={{
-                background: "#0D1117",
-                border: "1px solid #166534",
-                borderRadius: 16,
-                padding: "32px 28px",
+                background: t.bgSurface,
+                border: `1px solid ${t.successBorder}`,
+                borderRadius: 20,
+                padding: "40px 32px",
                 marginTop: 8,
                 textAlign: "center",
-                animation: "fadeSlideIn 0.4s ease forwards",
+                animation: "fadeSlideIn 0.5s ease forwards",
+                opacity: 0,
+                transition: "all 0.3s ease",
               }}
             >
               {/* Success icon */}
               <div
                 style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #14532D, #166534)",
-                  border: "2px solid #22C55E",
-                  margin: "0 auto 20px",
+                  width: 64,
+                  height: 64,
+                  borderRadius: 20,
+                  background: t.successBg,
+                  border: `2px solid ${t.successBorder}`,
+                  margin: "0 auto 24px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 24,
+                  animation: "scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s forwards",
+                  opacity: 0,
+                  transform: "scale(0.5)",
                 }}
               >
-                <span style={{ color: "#22C55E" }}>&#10003;</span>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={t.success} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
               </div>
 
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
-                  color: "#22C55E",
-                  letterSpacing: "2.5px",
+                  color: t.success,
+                  letterSpacing: "1.5px",
                   textTransform: "uppercase",
-                  marginBottom: 8,
+                  marginBottom: 10,
                 }}
               >
                 Setup Complete
@@ -1032,10 +1161,11 @@ export default function SereniumOnboarding() {
 
               <div
                 style={{
-                  fontSize: 20,
+                  fontSize: 24,
                   fontWeight: 700,
-                  color: "#F9FAFB",
-                  marginBottom: 8,
+                  color: t.text,
+                  marginBottom: 12,
+                  letterSpacing: "-0.5px",
                 }}
               >
                 {collectedData.business?.name || "Your Business"}
@@ -1044,38 +1174,38 @@ export default function SereniumOnboarding() {
               <div
                 style={{
                   fontSize: 15,
-                  color: "#9CA3AF",
+                  color: t.textSecondary,
                   lineHeight: 1.7,
-                  marginBottom: 24,
-                  maxWidth: 440,
-                  margin: "0 auto 24px",
+                  maxWidth: 420,
+                  margin: "0 auto 28px",
                 }}
               >
                 We've got everything we need. The Serenium team is now building your
                 custom AI receptionist — you'll receive an email
-                at <strong style={{ color: "#E5E7EB" }}>{collectedData.contact_email || "your email"}</strong> when
+                at <strong style={{ color: t.text }}>{collectedData.contact_email || "your email"}</strong> when
                 it's live.
               </div>
 
               {/* What happens next */}
               <div
                 style={{
-                  background: "#070B10",
-                  border: "1px solid #111827",
-                  borderRadius: 12,
-                  padding: "20px 24px",
+                  background: t.bgElevated,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 16,
+                  padding: "24px 28px",
                   textAlign: "left",
-                  marginBottom: 16,
+                  marginBottom: 20,
+                  transition: "all 0.3s ease",
                 }}
               >
                 <div
                   style={{
                     fontSize: 11,
                     fontWeight: 700,
-                    color: "#6B7280",
-                    letterSpacing: "2px",
+                    color: t.textMuted,
+                    letterSpacing: "1.5px",
                     textTransform: "uppercase",
-                    marginBottom: 16,
+                    marginBottom: 20,
                   }}
                 >
                   What happens next
@@ -1084,26 +1214,28 @@ export default function SereniumOnboarding() {
                   { step: "1", text: "Our team reviews your setup details" },
                   { step: "2", text: "We build and test your custom AI receptionist" },
                   { step: "3", text: "You get an email with your number and go-live instructions" },
-                ].map((item) => (
+                ].map((item, idx) => (
                   <div
                     key={item.step}
                     style={{
                       display: "flex",
                       alignItems: "flex-start",
-                      gap: 14,
-                      marginBottom: 14,
+                      gap: 16,
+                      marginBottom: idx < 2 ? 18 : 0,
+                      animation: `fadeSlideIn 0.4s ease ${0.3 + idx * 0.15}s forwards`,
+                      opacity: 0,
                     }}
                   >
                     <div
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: "50%",
-                        background: "#1D4ED8",
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: t.accentGradient,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: 700,
                         color: "#fff",
                         flexShrink: 0,
@@ -1111,14 +1243,7 @@ export default function SereniumOnboarding() {
                     >
                       {item.step}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: "#D1D5DB",
-                        lineHeight: 1.5,
-                        paddingTop: 2,
-                      }}
-                    >
+                    <div style={{ fontSize: 14, color: t.textSecondary, lineHeight: 1.6, paddingTop: 4 }}>
                       {item.text}
                     </div>
                   </div>
@@ -1128,17 +1253,19 @@ export default function SereniumOnboarding() {
               {/* Footer */}
               <div
                 style={{
-                  padding: "12px 16px",
-                  background: "#0A1628",
-                  border: "1px solid #1E3A5F",
-                  borderRadius: 10,
+                  padding: "14px 20px",
+                  background: t.accentGlow,
+                  border: `1px solid rgba(59,130,246,0.1)`,
+                  borderRadius: 12,
                   fontSize: 13,
-                  color: "#60A5FA",
+                  color: t.accent,
                   lineHeight: 1.6,
+                  fontWeight: 500,
+                  transition: "all 0.3s ease",
                 }}
               >
-                Typical turnaround is under 24 hours. Questions? Reach us
-                at <strong>contact@sereniumai.com</strong>
+                Typical turnaround is under 24 hours. Questions? Reach us at{" "}
+                <strong>contact@sereniumai.com</strong>
               </div>
             </div>
           )}
@@ -1155,15 +1282,30 @@ export default function SereniumOnboarding() {
             bottom: 0,
             left: 0,
             right: 0,
-            background: "rgba(7,11,16,0.97)",
-            backdropFilter: "blur(12px)",
-            borderTop: "1px solid #111827",
-            padding: "12px 16px 16px",
+            background: t.inputBarBg,
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderTop: `1px solid ${t.border}`,
+            padding: "14px 16px 20px",
             zIndex: 20,
+            boxShadow: t.shadow,
+            transition: "all 0.3s ease",
           }}
         >
-          <div style={{ maxWidth: 700, margin: "0 auto" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+          <div style={{ maxWidth: 680, margin: "0 auto" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-end",
+                background: t.bgInput,
+                border: `1px solid ${t.border}`,
+                borderRadius: 16,
+                padding: "6px 6px 6px 18px",
+                transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+              }}
+              className="input-container"
+            >
               <textarea
                 ref={inputRef}
                 value={input}
@@ -1173,68 +1315,46 @@ export default function SereniumOnboarding() {
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                 }}
                 onKeyDown={handleKey}
-                placeholder="Type your answer…"
+                placeholder="Type your answer..."
                 rows={1}
                 disabled={loading || scanning}
                 style={{
                   flex: 1,
-                  background: "#0D1117",
-                  border: "1px solid #1E2733",
-                  borderRadius: 14,
-                  padding: "13px 18px",
-                  color: "#F9FAFB",
+                  background: "transparent",
+                  border: "none",
+                  padding: "10px 0",
+                  color: t.text,
                   fontSize: 15,
-                  fontFamily: "'Barlow', Helvetica, Arial, sans-serif",
+                  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
                   resize: "none",
                   outline: "none",
                   lineHeight: 1.5,
                   overflowY: "hidden",
-                  transition: "border-color 0.2s",
-                  opacity: loading || scanning ? 0.5 : 1,
+                  opacity: loading || scanning ? 0.4 : 1,
+                  transition: "opacity 0.2s ease",
+                  letterSpacing: "-0.1px",
                 }}
-                onFocus={(e) => (e.target.style.borderColor = "#2563EB")}
-                onBlur={(e) => (e.target.style.borderColor = "#1E2733")}
               />
               <button
                 onClick={sendMessage}
-                disabled={!input.trim() || loading || scanning}
+                disabled={!canSend}
                 style={{
-                  background:
-                    input.trim() && !loading && !scanning
-                      ? "linear-gradient(135deg, #1D4ED8, #2563EB)"
-                      : "#0D1117",
-                  border: `1px solid ${input.trim() && !loading && !scanning ? "transparent" : "#1E2733"}`,
-                  borderRadius: 14,
-                  width: 50,
-                  height: 50,
+                  background: canSend ? t.accentGradient : t.bgElevated,
+                  border: "none",
+                  borderRadius: 12,
+                  width: 44,
+                  height: 44,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor:
-                    input.trim() && !loading && !scanning ? "pointer" : "default",
-                  transition: "all 0.2s",
+                  cursor: canSend ? "pointer" : "default",
+                  transition: "all 0.2s ease",
                   flexShrink: 0,
+                  boxShadow: canSend ? `0 2px 8px ${t.accentGlow}` : "none",
                 }}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M22 2L11 13"
-                    stroke={
-                      input.trim() && !loading && !scanning ? "#fff" : "#374151"
-                    }
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M22 2L15 22L11 13L2 9L22 2Z"
-                    stroke={
-                      input.trim() && !loading && !scanning ? "#fff" : "#374151"
-                    }
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                  <path d="M5 12L3 21L21 12L3 3L5 12ZM5 12H13" stroke={canSend ? "#fff" : t.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             </div>
@@ -1242,10 +1362,11 @@ export default function SereniumOnboarding() {
               style={{
                 textAlign: "center",
                 fontSize: 11,
-                color: "#1F2937",
-                marginTop: 8,
-                fontWeight: 500,
-                letterSpacing: "0.5px",
+                color: t.textMuted,
+                marginTop: 10,
+                fontWeight: 400,
+                letterSpacing: "0.2px",
+                opacity: 0.6,
               }}
             >
               Enter to send · Shift+Enter for new line
@@ -1255,25 +1376,36 @@ export default function SereniumOnboarding() {
       )}
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap');
-        * { box-sizing: border-box; }
-        body { margin: 0; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { margin: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         @keyframes fadeSlideIn {
-          from { opacity: 0; transform: translateY(8px); }
+          from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.5); }
+          to { opacity: 1; transform: scale(1); }
+        }
         @keyframes typingDot {
-          0%, 100% { opacity: 0.25; transform: scale(0.75); }
-          50% { opacity: 1; transform: scale(1.1); }
+          0%, 100% { opacity: 0.2; transform: scale(0.7); }
+          50% { opacity: 1; transform: scale(1); }
         }
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        ::-webkit-scrollbar { width: 4px; }
+        .input-container:focus-within {
+          border-color: ${t.borderFocus} !important;
+          box-shadow: 0 0 0 3px ${t.accentGlow} !important;
+        }
+        ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #1E2733; border-radius: 2px; }
-        textarea::placeholder { color: #374151; }
+        ::-webkit-scrollbar-thumb { background: ${t.scrollThumb}; border-radius: 3px; }
+        textarea::placeholder { color: ${t.placeholder}; }
+        @media (max-width: 640px) {
+          .input-container { border-radius: 14px !important; }
+        }
       `}</style>
     </div>
   );
