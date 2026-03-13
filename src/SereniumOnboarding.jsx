@@ -341,10 +341,12 @@ export default function SereniumOnboarding() {
   const [collectedData, setCollectedData] = useState(null);
   const [started, setStarted] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [scanCountdown, setScanCountdown] = useState(0);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const conversationRef = useRef([]);
   const partialFiredRef = useRef(false);
+  const scanTimerRef = useRef(null);
 
   useEffect(() => {
     initConversation();
@@ -477,35 +479,57 @@ export default function SereniumOnboarding() {
             display: completionMsg || "That's everything we need. Your setup is complete.",
           },
         ]);
+      } else if (scanUrl) {
+        // Website scan requested — DON'T show Claude's message yet, scan first
+        conversationRef.current.push({ role: "assistant", content: raw });
+
+        // Start scanning with countdown
+        setLoading(false);
+        setScanning(true);
+        setScanCountdown(30);
+        scanTimerRef.current = setInterval(() => {
+          setScanCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(scanTimerRef.current);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+
+        const websiteData = await scanWebsite(scanUrl);
+
+        // Stop countdown
+        clearInterval(scanTimerRef.current);
+        setScanCountdown(0);
+
+        if (websiteData) {
+          // Inject website data and get Claude's response incorporating it
+          const dataMsg = `[WEBSITE_DATA: ${JSON.stringify(websiteData)}]`;
+          conversationRef.current.push({ role: "user", content: dataMsg });
+
+          const followUp = await callClaude(
+            conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
+          );
+          const followUpPhase = extractPhase(followUp);
+          if (followUpPhase !== null) setPhase(followUpPhase);
+          const followUpDisplay = stripMarkers(followUp);
+          conversationRef.current.push({ role: "assistant", content: followUp });
+          setMessages((prev) => [...prev, { role: "assistant", display: followUpDisplay }]);
+        } else {
+          // Scan failed — show Claude's original message (which asked for the URL)
+          const detectedPhase = extractPhase(raw);
+          if (detectedPhase !== null) setPhase(detectedPhase);
+          const display = stripMarkers(raw);
+          setMessages((prev) => [...prev, { role: "assistant", display }]);
+        }
+        setScanning(false);
       } else {
         const detectedPhase = extractPhase(raw);
         if (detectedPhase !== null) setPhase(detectedPhase);
         const display = stripMarkers(raw);
         conversationRef.current.push({ role: "assistant", content: raw });
         setMessages((prev) => [...prev, { role: "assistant", display }]);
-
-        // If Claude asked to scan a URL, do it and inject results into conversation
-        if (scanUrl) {
-          setScanning(true);
-          const websiteData = await scanWebsite(scanUrl);
-
-          if (websiteData) {
-            // Inject website data as a system-like user message
-            const dataMsg = `[WEBSITE_DATA: ${JSON.stringify(websiteData)}]`;
-            conversationRef.current.push({ role: "user", content: dataMsg });
-
-            // Get Claude's response incorporating the website data
-            const followUp = await callClaude(
-              conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
-            );
-            const followUpPhase = extractPhase(followUp);
-            if (followUpPhase !== null) setPhase(followUpPhase);
-            const followUpDisplay = stripMarkers(followUp);
-            conversationRef.current.push({ role: "assistant", content: followUp });
-            setMessages((prev) => [...prev, { role: "assistant", display: followUpDisplay }]);
-          }
-          setScanning(false);
-        }
       }
     } catch (err) {
       console.error("sendMessage error:", err);
@@ -514,6 +538,8 @@ export default function SereniumOnboarding() {
         { role: "assistant", display: "Sorry — something went wrong. Please try again." },
       ]);
       setScanning(false);
+      clearInterval(scanTimerRef.current);
+      setScanCountdown(0);
     }
     setLoading(false);
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -886,9 +912,50 @@ export default function SereniumOnboarding() {
                 }}
               >
                 {scanning ? (
-                  <span style={{ fontSize: 13, color: "#3B82F6", fontWeight: 500 }}>
-                    Scanning website…
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        border: "3px solid #1E2733",
+                        borderTopColor: "#3B82F6",
+                        animation: "spin 1s linear infinite",
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        position: "relative",
+                      }}
+                    >
+                      {scanCountdown > 0 && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#3B82F6",
+                            position: "absolute",
+                          }}
+                        >
+                          {scanCountdown}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, color: "#E5E7EB", fontWeight: 600 }}>
+                        Scanning your website
+                      </div>
+                      <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                        {scanCountdown > 20
+                          ? "Fetching pages…"
+                          : scanCountdown > 10
+                            ? "Extracting business details…"
+                            : scanCountdown > 0
+                              ? "Almost done…"
+                              : "Wrapping up…"}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   [0, 1, 2].map((j) => (
                     <div
@@ -1186,6 +1253,10 @@ export default function SereniumOnboarding() {
         @keyframes typingDot {
           0%, 100% { opacity: 0.25; transform: scale(0.75); }
           50% { opacity: 1; transform: scale(1.1); }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }

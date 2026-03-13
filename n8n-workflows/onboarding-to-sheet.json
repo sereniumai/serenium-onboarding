@@ -25,7 +25,7 @@
           "conditions": [
             {
               "id": "condition-partial",
-              "leftValue": "={{ $json.partial }}",
+              "leftValue": "={{ $json.body.partial }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -54,15 +54,15 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "Sheet1",
+          "value": "Onboarding",
           "mode": "list"
         },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
             "Date": "={{ new Date().toISOString().split('T')[0] }}",
-            "Contact Name": "={{ $json.contact_name }}",
-            "Contact Email": "={{ $json.contact_email }}",
+            "Contact Name": "={{ $json.body.contact_name }}",
+            "Contact Email": "={{ $json.body.contact_email }}",
             "Business Name": "",
             "Industry": "",
             "Services": "",
@@ -101,27 +101,27 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "Sheet1",
+          "value": "Onboarding",
           "mode": "list"
         },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
             "Date": "={{ new Date().toISOString().split('T')[0] }}",
-            "Contact Name": "={{ $json.contact_name }}",
-            "Contact Email": "={{ $json.contact_email }}",
-            "Business Name": "={{ $json.business.name }}",
-            "Industry": "={{ $json.business.industry }}",
-            "Services": "={{ $json.business.services ? $json.business.services.join(', ') : '' }}",
-            "Service Areas": "={{ $json.business.service_areas ? $json.business.service_areas.join(', ') : '' }}",
-            "Hours": "={{ $json.business.hours ? (typeof $json.business.hours === 'object' ? Object.entries($json.business.hours).map(([d,h]) => d + ': ' + h).join(', ') : $json.business.hours) : '' }}",
-            "Carrier": "={{ $json.phone_setup ? $json.phone_setup.carrier : '' }}",
-            "Ring Delay": "={{ $json.phone_setup ? $json.phone_setup.ring_before_pickup_seconds : '' }}",
-            "Emergency #": "={{ $json.phone_setup ? $json.phone_setup.after_hours_emergency_number : '' }}",
-            "Notification Emails": "={{ $json.after_call && $json.after_call.notification_emails ? $json.after_call.notification_emails.join(', ') : '' }}",
+            "Contact Name": "={{ $json.body.contact_name }}",
+            "Contact Email": "={{ $json.body.contact_email }}",
+            "Business Name": "={{ $json.body.business ? $json.body.business.name : '' }}",
+            "Industry": "={{ $json.body.business ? $json.body.business.industry : '' }}",
+            "Services": "={{ $json.body.business && $json.body.business.services ? $json.body.business.services.join(', ') : '' }}",
+            "Service Areas": "={{ $json.body.business && $json.body.business.service_areas ? $json.body.business.service_areas.join(', ') : '' }}",
+            "Hours": "={{ $json.body.business && $json.body.business.hours ? (typeof $json.body.business.hours === 'object' ? Object.entries($json.body.business.hours).map(([d,h]) => d + ': ' + h).join(', ') : $json.body.business.hours) : '' }}",
+            "Carrier": "={{ $json.body.phone_setup ? $json.body.phone_setup.carrier : '' }}",
+            "Ring Delay": "={{ $json.body.phone_setup ? $json.body.phone_setup.ring_before_pickup_seconds : '' }}",
+            "Emergency #": "={{ $json.body.phone_setup ? $json.body.phone_setup.after_hours_emergency_number : '' }}",
+            "Notification Emails": "={{ $json.body.after_call && $json.body.after_call.notification_emails ? $json.body.after_call.notification_emails.join(', ') : '' }}",
             "Status": "Complete",
-            "Prompt Status": "={{ $json.generated_prompt ? 'Generated' : 'Failed' }}",
-            "Generated Prompt": "={{ $json.generated_prompt }}"
+            "Prompt Status": "={{ $json.body.generated_prompt ? 'Generated' : 'Failed' }}",
+            "Generated Prompt": "={{ $json.body.generated_prompt }}"
           }
         },
         "options": {}
