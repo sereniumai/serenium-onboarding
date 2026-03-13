@@ -329,6 +329,12 @@ function extractScanUrl(text) {
   return match ? match[1].trim() : null;
 }
 
+// Detect if user's message is a website URL (client-side, avoids a round-trip to Claude)
+function looksLikeUrl(text) {
+  const trimmed = text.trim();
+  return /^(https?:\/\/)?[\w.-]+\.\w{2,}(\/\S*)?$/i.test(trimmed);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -357,24 +363,33 @@ export default function SereniumOnboarding() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // ── Call server-side Claude API ──
+  // ── Call server-side Claude API (with 25s timeout) ──
   const callClaude = async (msgs, maxTokens = 1024) => {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system: SYSTEM_PROMPT,
-        messages: msgs,
-        max_tokens: maxTokens,
-      }),
-    });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
-    const data = await res.json();
-    if (!data.content || !data.content[0] || !data.content[0].text) {
-      console.error("Unexpected Claude response:", JSON.stringify(data));
-      throw new Error("Invalid response from Claude");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system: SYSTEM_PROMPT,
+          messages: msgs,
+          max_tokens: maxTokens,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      if (!data.content || !data.content[0] || !data.content[0].text) {
+        console.error("Unexpected Claude response:", JSON.stringify(data));
+        throw new Error("Invalid response from Claude");
+      }
+      return data.content[0].text;
+    } catch (err) {
+      clearTimeout(timeout);
+      throw err;
     }
-    return data.content[0].text;
   };
 
   // ── Fire partial data to n8n (name + email only) ──
@@ -455,21 +470,33 @@ export default function SereniumOnboarding() {
     setLoading(true);
 
     try {
-      const raw = await callClaude(
-        conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
-      );
+      // ── Fast path: if user sent a URL, skip the Claude round-trip and scan directly ──
+      const clientDetectedUrl = looksLikeUrl(userText);
 
-      // Check for partial capture (name + email)
-      const partialData = extractPartialCapture(raw);
-      if (partialData) {
-        firePartialToWebhook(partialData);
+      let raw = null;
+      let scanUrl = null;
+
+      if (clientDetectedUrl) {
+        // We know it's a URL — go straight to scanning
+        scanUrl = userText.trim();
+        if (!scanUrl.startsWith("http")) scanUrl = "https://" + scanUrl;
+      } else {
+        raw = await callClaude(
+          conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
+        );
+
+        // Check for partial capture (name + email)
+        const partialData = extractPartialCapture(raw);
+        if (partialData) {
+          firePartialToWebhook(partialData);
+        }
+
+        // Check for website scan request from Claude
+        scanUrl = extractScanUrl(raw);
       }
 
-      // Check for website scan request
-      const scanUrl = extractScanUrl(raw);
-
       // Check for completion
-      const jsonData = extractComplete(raw);
+      const jsonData = raw ? extractComplete(raw) : null;
 
       if (jsonData) {
         setCollectedData(jsonData);
@@ -485,12 +512,20 @@ export default function SereniumOnboarding() {
           },
         ]);
       } else if (scanUrl) {
-        // Show Claude's pre-scan message FIRST, then start scanning
-        const detectedPhase = extractPhase(raw);
-        if (detectedPhase !== null) setPhase(detectedPhase);
-        const display = stripMarkers(raw);
-        conversationRef.current.push({ role: "assistant", content: raw });
-        setMessages((prev) => [...prev, { role: "assistant", display }]);
+        // Show pre-scan message FIRST, then start scanning
+        if (raw) {
+          // Claude provided a response — use it
+          const detectedPhase = extractPhase(raw);
+          if (detectedPhase !== null) setPhase(detectedPhase);
+          const display = stripMarkers(raw);
+          conversationRef.current.push({ role: "assistant", content: raw });
+          setMessages((prev) => [...prev, { role: "assistant", display }]);
+        } else {
+          // Client-detected URL — show our own pre-scan message
+          const preScanMsg = "Great — let me scan your website and pull what I can.";
+          conversationRef.current.push({ role: "assistant", content: preScanMsg + "\n[SCAN_URL:" + scanUrl + "]\n[PHASE:0]" });
+          setMessages((prev) => [...prev, { role: "assistant", display: preScanMsg }]);
+        }
 
         // Start scanning with exciting 20s countdown
         setLoading(false);
