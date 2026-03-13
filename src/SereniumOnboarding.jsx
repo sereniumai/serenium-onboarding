@@ -338,6 +338,39 @@ function looksLikeUrl(text) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
+const SESSION_KEY = "serenium-session";
+const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+function saveSession(data) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...data, savedAt: Date.now() }));
+  } catch { /* localStorage full or unavailable */ }
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (Date.now() - data.savedAt > SESSION_TTL) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    if (data.complete) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch {}
+}
+
 export default function SereniumOnboarding() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -349,6 +382,7 @@ export default function SereniumOnboarding() {
   const [scanning, setScanning] = useState(false);
   const [scanCountdown, setScanCountdown] = useState(0);
   const [scanStep, setScanStep] = useState(0);
+  const [resumePrompt, setResumePrompt] = useState(null); // {name, phase} or null
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const conversationRef = useRef([]);
@@ -363,13 +397,97 @@ export default function SereniumOnboarding() {
     saveProgress(newPhase);
   };
 
+  // Save to localStorage after each message exchange
+  const persistSession = () => {
+    saveSession({
+      conversation: conversationRef.current,
+      displayMessages: messages,
+      phase,
+      contactInfo: contactInfoRef.current,
+      partialFired: partialFiredRef.current,
+      lastSavedPhase: lastSavedPhaseRef.current,
+    });
+  };
+
+  // Check for saved session on mount
   useEffect(() => {
-    initConversation();
+    const saved = loadSession();
+    if (saved && saved.conversation?.length > 2 && saved.contactInfo?.name) {
+      setResumePrompt({
+        name: saved.contactInfo.name,
+        phase: saved.phase || 0,
+        data: saved,
+      });
+    } else {
+      initConversation();
+    }
   }, []);
+
+  // Resume a saved session
+  const resumeSession = (saved) => {
+    conversationRef.current = saved.conversation || [];
+    contactInfoRef.current = saved.contactInfo || { name: "", email: "" };
+    partialFiredRef.current = saved.partialFired || false;
+    lastSavedPhaseRef.current = saved.lastSavedPhase ?? -1;
+    setPhase(saved.phase || 0);
+    setStarted(true);
+
+    // Rebuild display messages from saved data
+    if (saved.displayMessages?.length) {
+      setMessages(saved.displayMessages);
+    } else {
+      // Fallback: rebuild from conversation
+      const displayMsgs = saved.conversation
+        .filter((m) => m.content !== "__init__")
+        .map((m) => ({ role: m.role, display: stripMarkers(m.content) }));
+      setMessages(displayMsgs);
+    }
+
+    setResumePrompt(null);
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
+
+  const startFresh = () => {
+    clearSession();
+    setResumePrompt(null);
+    initConversation();
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Auto-save session to localStorage whenever messages change
+  useEffect(() => {
+    if (messages.length > 0 && !complete) {
+      saveSession({
+        conversation: conversationRef.current,
+        displayMessages: messages,
+        phase,
+        contactInfo: contactInfoRef.current,
+        partialFired: partialFiredRef.current,
+        lastSavedPhase: lastSavedPhaseRef.current,
+      });
+    }
+  }, [messages, phase]);
+
+  // Save on page close as safety net
+  useEffect(() => {
+    const handleUnload = () => {
+      if (conversationRef.current.length > 2 && !complete) {
+        saveSession({
+          conversation: conversationRef.current,
+          displayMessages: messages,
+          phase,
+          contactInfo: contactInfoRef.current,
+          partialFired: partialFiredRef.current,
+          lastSavedPhase: lastSavedPhaseRef.current,
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [messages, phase, complete]);
 
   // ── Call server-side Claude API (with retry on failure) ──
   const callClaude = async (msgs, maxTokens = 1024) => {
@@ -564,6 +682,7 @@ export default function SereniumOnboarding() {
       if (jsonData) {
         setCollectedData(jsonData);
         setComplete(true);
+        clearSession(); // Session done — clear localStorage
         generateAndSubmit(jsonData);
         const completionMsg = stripMarkers(raw.split("[COMPLETE]")[0]);
         conversationRef.current.push({ role: "assistant", content: raw });
@@ -1052,8 +1171,86 @@ export default function SereniumOnboarding() {
       {/* ── MESSAGES ── */}
       <main style={{ flex: 1, overflowY: "auto", padding: "28px 16px 140px" }}>
         <div style={{ maxWidth: 680, margin: "0 auto" }}>
+          {/* Resume prompt */}
+          {resumePrompt && (
+            <div
+              style={{
+                background: t.bgSurface,
+                border: `1px solid ${t.accent}`,
+                borderRadius: 20,
+                padding: "40px 32px",
+                marginBottom: 28,
+                textAlign: "center",
+                animation: "fadeSlideIn 0.4s ease forwards",
+                opacity: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 16,
+                  background: t.accentGradient,
+                  margin: "0 auto 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: `0 4px 16px ${t.accentGlow}`,
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="rgba(255,255,255,0.9)" />
+                  <path d="M2 17L12 22L22 17" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M2 12L12 17L22 12" stroke="rgba(255,255,255,0.8)" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 8, letterSpacing: "-0.5px" }}>
+                Welcome back, {resumePrompt.name}!
+              </div>
+              <div style={{ fontSize: 15, color: t.textSecondary, lineHeight: 1.7, marginBottom: 28 }}>
+                You were {Math.round((resumePrompt.phase / 5) * 100)}% through your setup.
+                Want to pick up where you left off?
+              </div>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+                <button
+                  onClick={() => resumeSession(resumePrompt.data)}
+                  style={{
+                    background: t.accentGradient,
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 12,
+                    padding: "12px 28px",
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    letterSpacing: "-0.2px",
+                    boxShadow: `0 2px 12px ${t.accentGlow}`,
+                  }}
+                >
+                  Continue Setup
+                </button>
+                <button
+                  onClick={startFresh}
+                  style={{
+                    background: t.bgElevated,
+                    color: t.textSecondary,
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 12,
+                    padding: "12px 28px",
+                    fontSize: 15,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    letterSpacing: "-0.2px",
+                  }}
+                >
+                  Start Fresh
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Intro card */}
-          {messages.length === 0 && (
+          {messages.length === 0 && !resumePrompt && (
             <div
               style={{
                 background: t.bgSurface,

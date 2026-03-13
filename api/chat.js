@@ -17,14 +17,15 @@ export default async function handler(req, res) {
     const { system, messages, max_tokens = 1024 } = req.body;
 
     // Trim conversation to keep token usage manageable:
-    // Always keep the first 2 messages (init + greeting) + last 20 messages
+    // Keep first 4 messages (init, greeting, name, email response with PARTIAL_CAPTURE)
+    // + last 16 messages (recent context). This preserves the core identity data.
     let trimmedMessages = messages;
-    if (messages.length > 22) {
+    if (messages.length > 24) {
       trimmedMessages = [
-        ...messages.slice(0, 2),
-        { role: "user", content: "[Earlier conversation trimmed for brevity — all previously collected info is still in context above]" },
-        { role: "assistant", content: "Understood, continuing from where we left off." },
-        ...messages.slice(-20),
+        ...messages.slice(0, 4),
+        { role: "user", content: "[Earlier conversation about business details, services, hours, etc. was trimmed. Continue from the most recent messages below.]" },
+        { role: "assistant", content: "Got it — picking up where we left off." },
+        ...messages.slice(-16),
       ];
     }
 

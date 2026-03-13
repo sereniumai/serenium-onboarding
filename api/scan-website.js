@@ -1,6 +1,39 @@
 // Vercel serverless function — scans a website URL and extracts business info via Claude
 export const config = { maxDuration: 60 };
 
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+];
+
+async function fetchWithRetry(url, timeoutMs = 8000) {
+  for (const ua of USER_AGENTS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": ua,
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Encoding": "identity",
+        },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const html = await res.text();
+        if (html.length > 500) return html; // got real content
+      }
+    } catch {
+      clearTimeout(timeout);
+    }
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -17,39 +50,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "URL is required" });
     }
 
-    // Fetch the website content (10s timeout — fail fast)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    // Try fetching the main page
+    let html = await fetchWithRetry(url);
 
-    let html;
-    try {
-      const siteRes = await fetch(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        redirect: "follow",
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (!siteRes.ok) {
-        console.error("Website fetch failed:", siteRes.status, url);
-        return res.status(200).json({
-          success: false,
-          error: `Website returned ${siteRes.status}. We'll gather the info from you directly.`,
-        });
+    // If main page failed, try common subpages for more content
+    if (!html) {
+      const base = url.replace(/\/$/, "");
+      for (const path of ["/about", "/services", "/about-us"]) {
+        html = await fetchWithRetry(base + path);
+        if (html) break;
       }
+    }
 
-      html = await siteRes.text();
-    } catch (fetchErr) {
-      clearTimeout(timeout);
-      console.error("Website fetch error:", fetchErr.name, fetchErr.message, url);
+    if (!html) {
       return res.status(200).json({
         success: false,
-        error: "Could not reach the website. We'll gather the info from you directly.",
+        error: "Could not reach the website.",
       });
     }
 
@@ -62,14 +78,13 @@ export default async function handler(req, res) {
       .replace(/<[^>]+>/g, " ")
       .replace(/&nbsp;/gi, " ")
       .replace(/&amp;/gi, "&")
+      .replace(/&#\d+;/gi, " ")
       .replace(/&[a-z]+;/gi, " ")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 12000);
 
-    // If content is too short, it's probably a bot challenge page or empty shell
     if (textContent.length < 50) {
-      console.warn("Website content too short after stripping:", textContent.length, url);
       return res.status(200).json({
         success: false,
         error: "Website didn't return enough content to analyze.",
@@ -113,8 +128,6 @@ ${textContent}`,
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.error("Claude API error during scan:", response.status, errText);
       return res.status(200).json({
         success: false,
         error: "Could not analyze the website.",
@@ -124,7 +137,6 @@ ${textContent}`,
     const data = await response.json();
     const rawText = data.content[0].text;
 
-    // Parse the JSON response — try to extract JSON even if wrapped in markdown
     try {
       let jsonStr = rawText;
       const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -132,7 +144,6 @@ ${textContent}`,
       const extracted = JSON.parse(jsonStr.trim());
       return res.status(200).json({ success: true, data: extracted });
     } catch {
-      console.error("Failed to parse Claude extraction:", rawText.slice(0, 200));
       return res.status(200).json({
         success: false,
         error: "Could not parse website data.",
