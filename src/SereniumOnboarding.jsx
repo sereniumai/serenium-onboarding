@@ -114,6 +114,9 @@ Q29. Calls under 5 seconds — hangups, wrong numbers, dead air — spreadsheet 
 Q30. Is there anything specific they always want captured from every call? E.g. how they heard about the business, property type, job size.
 Q31. Should Aria ask every caller how they heard about the business?
 
+DATA TRACKING — CRITICAL:
+As you collect information throughout the conversation, keep a running mental record of EVERY piece of data the user gives you. When conversation context is trimmed, earlier messages may be replaced with a DATA COLLECTED SO FAR summary — use that to maintain continuity.
+
 COMPLETION:
 When you have collected ALL of the above, say something warm like:
 "That's everything I need — great work. The Serenium team will have your AI receptionist built and ready within 24 hours. You'll get an email when it's live."
@@ -122,7 +125,14 @@ Then on a new line output exactly:
 [COMPLETE]
 {...json...}
 
-Use this exact JSON structure:
+CRITICAL JSON RULES:
+- Every value MUST be the ACTUAL data the user provided during this conversation.
+- NEVER use placeholder text like "[From earlier]", "[Business name from earlier conversation]", "[From earlier conversation]", or any text in square brackets.
+- NEVER use template variables like "{{company_name}}" or "{{service_areas}}".
+- If you genuinely do not have a piece of data because it was never collected, use an empty string "" or empty array [].
+- If conversation was trimmed but a DATA COLLECTED SO FAR summary was provided, use those actual values.
+
+Use this exact JSON structure (fill with REAL values only):
 {
   "contact_name": "",
   "contact_email": "",
@@ -182,11 +192,13 @@ Do not add [PHASE:0] to the very first message since it won't have been rendered
 const PROMPT_GENERATION_SYSTEM = `You are an expert AI voice agent prompt writer for Serenium AI. Your job is to take a business's onboarding data and write a complete, production-ready Retell AI agent prompt for their custom AI receptionist.
 
 You will be given:
-1. A reference prompt (the Serenium HVAC example — the gold standard)
+1. A reference prompt (the Serenium HVAC example — the gold standard). Note: the reference uses {{company_name}} and {{service_areas}} as template placeholders — you must replace these with the ACTUAL business name and service areas from the onboarding data.
 2. The new business's onboarding JSON data
 
 Your job is to write a NEW prompt that:
 - Follows the exact same structure and quality as the reference prompt
+- Uses the ACTUAL business name everywhere (never {{company_name}} or [Company] or any placeholder)
+- Uses the ACTUAL service areas everywhere (never {{service_areas}} or any placeholder)
 - Replaces all HVAC-specific content with the new business's industry, services, call types, and priorities
 - Generates NATURAL, INTELLIGENT call paths based on their common call types and priority levels
 - Writes smart gathering questions appropriate for their industry (not copy-pasted from HVAC)
@@ -196,6 +208,8 @@ Your job is to write a NEW prompt that:
 - Keeps inline references to ADDRESS RULE and CALLBACK RULE blocks
 - Names the agent "Aria" unless a different name was specified
 - Sounds natural, sharp, and industry-aware — not generic
+- NEVER outputs placeholder text in square brackets like [From earlier], [Business name], etc.
+- NEVER outputs template variables like {{anything}} — only real values from the onboarding data
 
 CALL PATH RULES:
 - Generate one path per distinct call type they described
@@ -641,6 +655,80 @@ export default function SereniumOnboarding() {
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
+  // ── Build a summary of all data collected so far from conversation ──
+  const buildDataSummary = (msgs) => {
+    const dataPoints = [];
+
+    // Pull from contactInfoRef (most reliable source)
+    if (contactInfoRef.current?.name) dataPoints.push(`Contact name: ${contactInfoRef.current.name}`);
+    if (contactInfoRef.current?.email) dataPoints.push(`Contact email: ${contactInfoRef.current.email}`);
+
+    for (const m of msgs) {
+      // Pull partial capture data (name + email) from assistant markers
+      if (m.role === "assistant") {
+        const partial = m.content.match(/\[PARTIAL_CAPTURE\](\{[^}]*\})/);
+        if (partial) {
+          try {
+            const d = JSON.parse(partial[1]);
+            if (d.contact_name) dataPoints.push(`Contact name: ${d.contact_name}`);
+            if (d.contact_email) dataPoints.push(`Contact email: ${d.contact_email}`);
+          } catch {}
+        }
+      }
+      // Pull website scan data
+      if (m.role === "user" && m.content.startsWith("[WEBSITE_DATA:")) {
+        try {
+          const jsonStr = m.content.replace(/^\[WEBSITE_DATA:\s*/, "").replace(/\]$/, "");
+          const wd = JSON.parse(jsonStr);
+          if (wd.name) dataPoints.push(`Business name: ${wd.name}`);
+          if (wd.industry) dataPoints.push(`Industry: ${wd.industry}`);
+          if (wd.services?.length) dataPoints.push(`Services: ${wd.services.join(", ")}`);
+          if (wd.service_areas?.length) dataPoints.push(`Service areas: ${wd.service_areas.join(", ")}`);
+          if (wd.phone) dataPoints.push(`Phone: ${wd.phone}`);
+          if (wd.email) dataPoints.push(`Email: ${wd.email}`);
+          if (wd.hours) dataPoints.push(`Hours: ${wd.hours}`);
+        } catch {}
+      }
+      // Pull any earlier data summary that was already injected
+      if (m.role === "user" && m.content.includes("[DATA COLLECTED SO FAR")) {
+        const lines = m.content.split("\n");
+        for (const line of lines) {
+          if (line.match(/^(Contact name|Contact email|Business name|Industry|Services|Service areas|Phone|Email|Hours):/)) {
+            dataPoints.push(line.trim());
+          }
+        }
+      }
+    }
+
+    // Deduplicate, preferring later entries (more accurate)
+    const seen = new Map();
+    for (const dp of dataPoints) {
+      const key = dp.split(":")[0];
+      seen.set(key, dp);
+    }
+    return [...seen.values()];
+  };
+
+  // ── Trim conversation for sending to Claude, preserving collected data ──
+  const trimConversation = (msgs) => {
+    if (msgs.length <= 24) return msgs;
+    const dataSummary = buildDataSummary(msgs);
+    const summaryText = dataSummary.length > 0
+      ? `[DATA COLLECTED SO FAR from earlier in this conversation:\n${dataSummary.join("\n")}\n]\n\nEarlier conversation messages were trimmed for length. The data above was collected from the user. Continue from the most recent messages below.`
+      : "[Earlier conversation was trimmed for length. Continue from the most recent messages below.]";
+    // Find the tail: last 16 messages, but ensure it starts with a "user" role
+    let tail = msgs.slice(-16);
+    while (tail.length > 0 && tail[0].role !== "user") {
+      tail = tail.slice(1);
+    }
+    return [
+      ...msgs.slice(0, 4), // Keep init + greeting + name + email
+      { role: "user", content: summaryText },
+      { role: "assistant", content: "Got it — I have all that noted. Picking up where we left off." },
+      ...tail,
+    ];
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || loading || complete) return;
     const userText = input.trim();
@@ -663,7 +751,7 @@ export default function SereniumOnboarding() {
         if (!scanUrl.startsWith("http")) scanUrl = "https://" + scanUrl;
       } else {
         raw = await callClaude(
-          conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
+          trimConversation(conversationRef.current.map((m) => ({ role: m.role, content: m.content })))
         );
 
         // Check for partial capture (name + email)
@@ -759,7 +847,7 @@ export default function SereniumOnboarding() {
 
           try {
             const followUp = await callClaude(
-              conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
+              trimConversation(conversationRef.current.map((m) => ({ role: m.role, content: m.content })))
             );
             const followUpPhase = extractPhase(followUp);
             if (followUpPhase !== null) updatePhase(followUpPhase);
@@ -779,7 +867,7 @@ export default function SereniumOnboarding() {
 
           try {
             const followUp = await callClaude(
-              conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
+              trimConversation(conversationRef.current.map((m) => ({ role: m.role, content: m.content })))
             );
             const followUpPhase = extractPhase(followUp);
             if (followUpPhase !== null) updatePhase(followUpPhase);
@@ -830,9 +918,30 @@ export default function SereniumOnboarding() {
     }
   };
 
+  // Clean placeholder values from JSON data — replaces "[From earlier]" etc. with ""
+  const sanitizeData = (obj) => {
+    if (typeof obj === "string") {
+      // Replace any "[...from earlier...]" or "{{...}}" placeholder patterns with empty string
+      if (/\[.*(?:from earlier|earlier conversation|not specified).*\]/i.test(obj)) return "";
+      if (/\{\{.*\}\}/.test(obj)) return "";
+      return obj;
+    }
+    if (Array.isArray(obj)) return obj.map(sanitizeData).filter((v) => v !== "");
+    if (obj && typeof obj === "object") {
+      const cleaned = {};
+      for (const [k, v] of Object.entries(obj)) {
+        cleaned[k] = sanitizeData(v);
+      }
+      return cleaned;
+    }
+    return obj;
+  };
+
   // Generate prompt server-side and fire everything to n8n + Google Sheet
   // Client never sees the prompt — it's internal for the Serenium team
   const generateAndSubmit = async (jsonData) => {
+    // Sanitize any placeholder values that Claude may have left in
+    jsonData = sanitizeData(jsonData);
     try {
       const res = await fetch("/api/generate-prompt", {
         method: "POST",

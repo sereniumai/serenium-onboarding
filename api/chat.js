@@ -16,17 +16,17 @@ export default async function handler(req, res) {
   try {
     const { system, messages, max_tokens = 1024 } = req.body;
 
-    // Trim conversation to keep token usage manageable:
-    // Keep first 4 messages (init, greeting, name, email response with PARTIAL_CAPTURE)
-    // + last 16 messages (recent context). This preserves the core identity data.
+    // Client handles smart trimming with data summaries.
+    // Server-side safety: hard cap at 30 messages to prevent token blowout.
     let trimmedMessages = messages;
-    if (messages.length > 24) {
-      trimmedMessages = [
-        ...messages.slice(0, 4),
-        { role: "user", content: "[Earlier conversation about business details, services, hours, etc. was trimmed. Continue from the most recent messages below.]" },
-        { role: "assistant", content: "Got it — picking up where we left off." },
-        ...messages.slice(-16),
-      ];
+    if (messages.length > 30) {
+      const head = messages.slice(0, 6);
+      let tail = messages.slice(-20);
+      // Ensure tail starts with "user" role to maintain alternation
+      while (tail.length > 0 && tail[0].role !== "user") {
+        tail = tail.slice(1);
+      }
+      trimmedMessages = [...head, ...tail];
     }
 
     const body = JSON.stringify({
