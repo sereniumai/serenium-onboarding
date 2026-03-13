@@ -44,7 +44,7 @@ Q3. Business name
 Q4. Website URL — ask so the AI can learn about their business. Say something like "Got a website? If you share the link I can pull some info automatically and save us some time."
 → After they provide a URL, output on a new line: [SCAN_URL:the-url-here]
 → If they say no website, skip and continue.
-→ If website data comes back (the next user message will include it prefixed with [WEBSITE_DATA:...]), use it to pre-fill what you can and confirm with the client: "I pulled some info from your site — [business name], looks like you offer [services]. That right? Anything to add or change?"
+→ If website data comes back (the next user message will include it prefixed with [WEBSITE_DATA:...]), use it to pre-fill what you can and confirm with the client. Give a warm, excited summary of what you found — mention the business name, the services you spotted, service areas if found, and any other details. Then ask something like "Does that sound about right?" or "That match up with what you do?" to confirm it's accurate. Make them feel like the scan was worth it. If anything looks thin or missing, note what you still need to ask about.
 Q5. Industry / trade — HVAC, electrical, plumbing, landscaping, roofing, cleaning, or other
 Q6. All services they offer — get a COMPLETE list, probe if vague ("anything else? most [trade] businesses also offer [examples]")
 Q7. Residential, commercial, or both
@@ -342,6 +342,7 @@ export default function SereniumOnboarding() {
   const [started, setStarted] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanCountdown, setScanCountdown] = useState(0);
+  const [scanStep, setScanStep] = useState(0);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const conversationRef = useRef([]);
@@ -484,50 +485,96 @@ export default function SereniumOnboarding() {
           },
         ]);
       } else if (scanUrl) {
-        // Website scan requested — DON'T show Claude's message yet, scan first
+        // Show Claude's pre-scan message FIRST, then start scanning
+        const detectedPhase = extractPhase(raw);
+        if (detectedPhase !== null) setPhase(detectedPhase);
+        const display = stripMarkers(raw);
         conversationRef.current.push({ role: "assistant", content: raw });
+        setMessages((prev) => [...prev, { role: "assistant", display }]);
 
-        // Start scanning with countdown
+        // Start scanning with exciting 20s countdown
         setLoading(false);
         setScanning(true);
-        setScanCountdown(30);
+        setScanCountdown(20);
+        setScanStep(0);
+
+        let count = 20;
         scanTimerRef.current = setInterval(() => {
-          setScanCountdown((prev) => {
-            if (prev <= 1) {
-              clearInterval(scanTimerRef.current);
-              return 0;
-            }
-            return prev - 1;
-          });
+          count--;
+          setScanCountdown(count);
+          if (count <= 17 && count > 13) setScanStep(1);
+          else if (count <= 13 && count > 8) setScanStep(2);
+          else if (count <= 8 && count > 3) setScanStep(3);
+          else if (count <= 3) setScanStep(4);
+          if (count <= 0) {
+            clearInterval(scanTimerRef.current);
+          }
         }, 1000);
 
-        const websiteData = await scanWebsite(scanUrl);
+        // Scan website in parallel with countdown
+        let websiteData = null;
+        try {
+          websiteData = await scanWebsite(scanUrl);
+        } catch (err) {
+          console.error("Scan failed:", err);
+        }
 
-        // Stop countdown
+        // Wait for countdown to finish if scan returned early
+        if (count > 0) {
+          await new Promise((resolve) => {
+            const check = setInterval(() => {
+              if (count <= 0) { clearInterval(check); resolve(); }
+            }, 500);
+            setTimeout(() => { clearInterval(check); resolve(); }, 25000);
+          });
+        }
+
+        // Clear scanning state
         clearInterval(scanTimerRef.current);
         setScanCountdown(0);
+        setScanStep(0);
+        setScanning(false);
+        setLoading(true);
 
         if (websiteData) {
-          // Inject website data and get Claude's response incorporating it
           const dataMsg = `[WEBSITE_DATA: ${JSON.stringify(websiteData)}]`;
           conversationRef.current.push({ role: "user", content: dataMsg });
 
-          const followUp = await callClaude(
-            conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
-          );
-          const followUpPhase = extractPhase(followUp);
-          if (followUpPhase !== null) setPhase(followUpPhase);
-          const followUpDisplay = stripMarkers(followUp);
-          conversationRef.current.push({ role: "assistant", content: followUp });
-          setMessages((prev) => [...prev, { role: "assistant", display: followUpDisplay }]);
+          try {
+            const followUp = await callClaude(
+              conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
+            );
+            const followUpPhase = extractPhase(followUp);
+            if (followUpPhase !== null) setPhase(followUpPhase);
+            const followUpDisplay = stripMarkers(followUp);
+            conversationRef.current.push({ role: "assistant", content: followUp });
+            setMessages((prev) => [...prev, { role: "assistant", display: followUpDisplay }]);
+          } catch (err) {
+            console.error("Follow-up Claude call failed:", err);
+            const fallback = "I checked out your website but had trouble loading the details. No worries — I'll just ask you directly. What industry or trade is your business in?";
+            conversationRef.current.push({ role: "assistant", content: fallback + "\n[PHASE:0]" });
+            setMessages((prev) => [...prev, { role: "assistant", display: fallback }]);
+          }
         } else {
-          // Scan failed — show Claude's original message (which asked for the URL)
-          const detectedPhase = extractPhase(raw);
-          if (detectedPhase !== null) setPhase(detectedPhase);
-          const display = stripMarkers(raw);
-          setMessages((prev) => [...prev, { role: "assistant", display }]);
+          // Scan failed — continue gracefully
+          const failMsg = `[WEBSITE_DATA: SCAN_FAILED - could not retrieve data from ${scanUrl}. Continue collecting info by asking the user directly.]`;
+          conversationRef.current.push({ role: "user", content: failMsg });
+
+          try {
+            const followUp = await callClaude(
+              conversationRef.current.map((m) => ({ role: m.role, content: m.content }))
+            );
+            const followUpPhase = extractPhase(followUp);
+            if (followUpPhase !== null) setPhase(followUpPhase);
+            const followUpDisplay = stripMarkers(followUp);
+            conversationRef.current.push({ role: "assistant", content: followUp });
+            setMessages((prev) => [...prev, { role: "assistant", display: followUpDisplay }]);
+          } catch {
+            const fallback = "I wasn't able to pull info from your website, but that's okay — we'll get everything we need right here. What industry or trade is your business in?";
+            conversationRef.current.push({ role: "assistant", content: fallback + "\n[PHASE:0]" });
+            setMessages((prev) => [...prev, { role: "assistant", display: fallback }]);
+          }
         }
-        setScanning(false);
       } else {
         const detectedPhase = extractPhase(raw);
         if (detectedPhase !== null) setPhase(detectedPhase);
@@ -552,6 +599,7 @@ export default function SereniumOnboarding() {
       setScanning(false);
       clearInterval(scanTimerRef.current);
       setScanCountdown(0);
+      setScanStep(0);
     }
     setLoading(false);
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -1005,8 +1053,8 @@ export default function SereniumOnboarding() {
             </div>
           ))}
 
-          {/* Typing / scanning indicator */}
-          {(loading || scanning) && (
+          {/* Typing indicator (non-scanning) */}
+          {loading && !scanning && (
             <div
               style={{
                 display: "flex",
@@ -1039,72 +1087,188 @@ export default function SereniumOnboarding() {
                 style={{
                   background: t.aiBubble,
                   border: `1px solid ${t.aiBubbleBorder}`,
-                  padding: scanning ? "16px 22px" : "16px 20px",
+                  padding: "16px 20px",
                   borderRadius: "20px 20px 20px 4px",
                   display: "flex",
                   gap: 6,
                   alignItems: "center",
-                  transition: "all 0.3s ease",
                 }}
               >
-                {scanning ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                    {/* Scan progress ring */}
-                    <div style={{ position: "relative", width: 42, height: 42, flexShrink: 0 }}>
-                      <svg width="42" height="42" style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx="21" cy="21" r="18" fill="none" stroke={t.border} strokeWidth="3" />
-                        <circle
-                          cx="21" cy="21" r="18" fill="none"
-                          stroke={t.accent}
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeDasharray={`${((30 - scanCountdown) / 30) * 113} 113`}
-                          style={{ transition: "stroke-dasharray 1s linear" }}
-                        />
-                      </svg>
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: "50%",
-                          left: "50%",
-                          transform: "translate(-50%, -50%)",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: t.accent,
-                        }}
-                      >
-                        {scanCountdown > 0 ? scanCountdown : ""}
-                      </span>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 14, color: t.text, fontWeight: 600, letterSpacing: "-0.2px" }}>
-                        Scanning your website
-                      </div>
-                      <div style={{ fontSize: 12, color: t.textMuted, marginTop: 3 }}>
-                        {scanCountdown > 20
-                          ? "Fetching pages..."
-                          : scanCountdown > 10
-                            ? "Extracting business details..."
-                            : scanCountdown > 0
-                              ? "Almost done..."
-                              : "Wrapping up..."}
-                      </div>
-                    </div>
+                {[0, 1, 2].map((j) => (
+                  <div
+                    key={j}
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: t.accent,
+                      animation: `typingDot 1.3s ease-in-out ${j * 0.22}s infinite`,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Scanning UI — exciting countdown experience */}
+          {scanning && (
+            <div
+              style={{
+                animation: "fadeSlideIn 0.3s ease forwards",
+                opacity: 0,
+                marginBottom: 20,
+              }}
+            >
+              <div
+                style={{
+                  background: t.bgSurface,
+                  border: `1px solid ${t.aiBubbleBorder}`,
+                  borderRadius: 20,
+                  padding: "28px 24px",
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                {/* Animated background pulse */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: `radial-gradient(circle at 50% 50%, ${t.accentGlow} 0%, transparent 70%)`,
+                    animation: "scanPulse 2s ease-in-out infinite",
+                  }}
+                />
+
+                {/* Countdown number */}
+                <div style={{ textAlign: "center", position: "relative", zIndex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 56,
+                      fontWeight: 800,
+                      background: t.accentGradient,
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      lineHeight: 1,
+                      marginBottom: 6,
+                      fontVariantNumeric: "tabular-nums",
+                      animation: scanCountdown <= 5 ? "countdownUrgent 0.5s ease-in-out infinite" : "none",
+                    }}
+                  >
+                    {scanCountdown}
                   </div>
-                ) : (
-                  [0, 1, 2].map((j) => (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "3px",
+                      textTransform: "uppercase",
+                      color: t.accent,
+                      marginBottom: 20,
+                    }}
+                  >
+                    Scanning your website
+                  </div>
+
+                  {/* Progress bar */}
+                  <div
+                    style={{
+                      height: 4,
+                      background: t.border,
+                      borderRadius: 4,
+                      overflow: "hidden",
+                      marginBottom: 20,
+                    }}
+                  >
                     <div
-                      key={j}
                       style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: t.accent,
-                        animation: `typingDot 1.3s ease-in-out ${j * 0.22}s infinite`,
+                        height: "100%",
+                        width: `${((20 - scanCountdown) / 20) * 100}%`,
+                        background: t.accentGradient,
+                        borderRadius: 4,
+                        transition: "width 1s linear",
+                        boxShadow: `0 0 12px ${t.accentGlow}`,
                       }}
                     />
-                  ))
-                )}
+                  </div>
+
+                  {/* Step checklist */}
+                  <div style={{ textAlign: "left", maxWidth: 280, margin: "0 auto" }}>
+                    {[
+                      { label: "Connecting to site", step: 0 },
+                      { label: "Reading pages", step: 1 },
+                      { label: "Extracting business info", step: 2 },
+                      { label: "Analyzing services", step: 3 },
+                      { label: "Building your profile", step: 4 },
+                    ].map((item) => {
+                      const isDone = scanStep > item.step;
+                      const isActive = scanStep === item.step;
+                      return (
+                        <div
+                          key={item.step}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            marginBottom: 10,
+                            opacity: isDone ? 1 : isActive ? 1 : 0.3,
+                            transition: "opacity 0.4s ease",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: "50%",
+                              background: isDone
+                                ? t.successBg
+                                : isActive
+                                  ? t.accent
+                                  : t.bgElevated,
+                              border: `2px solid ${isDone ? t.success : isActive ? t.accent : t.border}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 10,
+                              flexShrink: 0,
+                              transition: "all 0.3s ease",
+                              boxShadow: isActive ? `0 0 8px ${t.accentGlow}` : "none",
+                            }}
+                          >
+                            {isDone ? (
+                              <span style={{ color: t.success, fontSize: 10 }}>✓</span>
+                            ) : isActive ? (
+                              <div
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: "50%",
+                                  background: "#fff",
+                                  animation: "typingDot 1s ease-in-out infinite",
+                                }}
+                              />
+                            ) : null}
+                          </div>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isDone ? 600 : isActive ? 600 : 400,
+                              color: isDone ? t.success : isActive ? t.text : t.textMuted,
+                              transition: "color 0.3s ease",
+                            }}
+                          >
+                            {item.label}
+                            {isActive && (
+                              <span style={{ color: t.accent, marginLeft: 4 }}>…</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1391,9 +1555,13 @@ export default function SereniumOnboarding() {
           0%, 100% { opacity: 0.2; transform: scale(0.7); }
           50% { opacity: 1; transform: scale(1); }
         }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+        @keyframes scanPulse {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.05); }
+        }
+        @keyframes countdownUrgent {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.08); }
         }
         .input-container:focus-within {
           border-color: ${t.borderFocus} !important;
