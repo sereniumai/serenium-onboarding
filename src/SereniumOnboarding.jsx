@@ -369,6 +369,10 @@ export default function SereniumOnboarding() {
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     const data = await res.json();
+    if (!data.content || !data.content[0] || !data.content[0].text) {
+      console.error("Unexpected Claude response:", JSON.stringify(data));
+      throw new Error("Invalid response from Claude");
+    }
     return data.content[0].text;
   };
 
@@ -533,6 +537,14 @@ export default function SereniumOnboarding() {
       }
     } catch (err) {
       console.error("sendMessage error:", err);
+      // Remove the orphaned user message from conversation history to prevent
+      // consecutive user messages which would break the Claude API
+      if (
+        conversationRef.current.length > 0 &&
+        conversationRef.current[conversationRef.current.length - 1].role === "user"
+      ) {
+        conversationRef.current.pop();
+      }
       setMessages((prev) => [
         ...prev,
         { role: "assistant", display: "Sorry — something went wrong. Please try again." },

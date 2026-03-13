@@ -1,4 +1,7 @@
 // Vercel serverless function — scans a website URL and extracts business info via Claude
+// Allow up to 60s for thorough website scanning + Claude extraction
+export const maxDuration = 60;
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
