@@ -1,7 +1,19 @@
 // Vercel serverless function — fires onboarding data to n8n webhook
 // and sends email notification on completion
-const N8N_WEBHOOK_URL = "https://serenium.app.n8n.cloud/webhook/serenium-onboarding";
-const NOTIFICATION_EMAIL = "contact@sereniumai.com";
+
+const N8N_WEBHOOK_URL =
+  process.env.N8N_WEBHOOK_URL ||
+  "https://serenium.app.n8n.cloud/webhook/serenium-onboarding";
+
+const N8N_EMAIL_WEBHOOK_URL =
+  process.env.N8N_EMAIL_WEBHOOK_URL ||
+  "https://serenium.app.n8n.cloud/webhook/serenium-onboarding-email";
+
+const NOTIFICATION_EMAIL =
+  process.env.NOTIFICATION_EMAIL || "contact@sereniumai.com";
+
+const GOOGLE_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1UKr_CUldJXJJlqSj5i6D13uBNpKsr1OGHYCdB-5zTgs";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -48,13 +60,16 @@ async function sendCompletionEmail(payload) {
   const industry = payload.business?.industry || "Not specified";
   const serviceAreas = payload.business?.service_areas?.join(", ") || "Not specified";
   const services = payload.business?.services?.join(", ") || "Not specified";
-  const phoneType = payload.phone_setup?.type === "new" ? "New number" : "Divert existing";
-  const notificationEmails = payload.after_call?.notification_emails?.join(", ") || "None";
+  const phoneType =
+    payload.phone_setup?.type === "new" ? "New number" : "Divert existing";
+  const notificationEmails =
+    payload.after_call?.notification_emails?.join(", ") || "None";
 
   const emailPayload = {
     to: NOTIFICATION_EMAIL,
     subject: `New Onboarding Complete — ${businessName}`,
-    body: `A new client has completed the Serenium AI onboarding.\n\n` +
+    body:
+      `A new client has completed the Serenium AI onboarding.\n\n` +
       `CONTACT\n` +
       `Name: ${contactName}\n` +
       `Email: ${contactEmail}\n\n` +
@@ -66,18 +81,14 @@ async function sendCompletionEmail(payload) {
       `Phone Setup: ${phoneType}\n` +
       `Notification Emails: ${notificationEmails}\n\n` +
       `The generated Retell prompt and full data are in the Google Sheet.\n` +
-      `https://docs.google.com/spreadsheets/d/1UKr_CUldJXJJlqSj5i6D13uBNpKsr1OGHYCdB-5zTgs`,
+      GOOGLE_SHEET_URL,
   };
 
-  // Fire to n8n email notification webhook
-  const emailRes = await fetch(
-    "https://serenium.app.n8n.cloud/webhook/serenium-onboarding-email",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(emailPayload),
-    }
-  );
+  const emailRes = await fetch(N8N_EMAIL_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(emailPayload),
+  });
 
   if (!emailRes.ok) {
     throw new Error(`Email webhook returned ${emailRes.status}`);

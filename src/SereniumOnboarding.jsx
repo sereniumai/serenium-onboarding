@@ -424,7 +424,8 @@ export default function SereniumOnboarding() {
         { role: "assistant", content: raw },
       ];
       setMessages([{ role: "assistant", display }]);
-    } catch {
+    } catch (err) {
+      console.error("initConversation error:", err);
       const fallback =
         "Hey — welcome to Serenium AI. I'm going to walk you through a quick setup so we can build your AI receptionist. Shouldn't take more than 10–12 minutes. Let's start with you — what's your name?";
       conversationRef.current = [
@@ -506,7 +507,8 @@ export default function SereniumOnboarding() {
           setScanning(false);
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("sendMessage error:", err);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", display: "Sorry — something went wrong. Please try again." },
